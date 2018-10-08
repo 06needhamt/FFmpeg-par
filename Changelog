@@ -33,6 +33,7 @@ version <next>:
 - ilbc decoder
 - audio denoiser as afftdn filter
 - AV1 parser
+- AD Holdings PAR Muxer and Demuxer
 
 
 version 4.0:
