@@ -1,6 +1,6 @@
 /*
  * copyright (c) 2010 AD-Holdings plc
- * Modified for FFmpeg 3.7 by Tom Needham <06needhamt@gmail.com> (2018)
+ * Modified for FFmpeg by Tom Needham <06needhamt@gmail.com> (2018)
  *
  * This file is part of FFmpeg.
  *
