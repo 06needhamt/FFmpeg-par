@@ -781,7 +781,7 @@ static int admime_read_packet(AVFormatContext *s, AVPacket *pkt)
         errorVal = ad_read_packet(s, pkt, 1, mediaType, codecId, payload, txtDat);
     }
     else  {
-        av_dlog(s, "admime_read_packet: Error %d\n", errorVal);
+        // av_dlog(s, "admime_read_packet: Error %d\n", errorVal);
         
 #ifdef AD_SIDEDATA_IN_PRIV
         // If there was an error, release any memory that has been allocated

@@ -537,7 +537,7 @@ static int adbinary_read_packet(struct AVFormatContext *s, AVPacket *pkt)
                 errorVal = ad_read_layout(s, pkt, size);
                 break;
             case AD_DATATYPE_BMP:
-                av_dlog(s, "Bitmap overlay\n");
+                // av_dlog(s, "Bitmap overlay\n");
                 tempbuf = av_malloc(size);  
                 if (tempbuf)  {
                     avio_read(pb, tempbuf, size);
