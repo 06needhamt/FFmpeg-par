@@ -1,0 +1,1 @@
+./configure --toolchain=msvc --arch=x86 --enable-yasm --enable-asm --enable-shared --disable-static --enable-avresample --enable-libx264 --enable-nonfree --enable-gpl --enable-libparreader --extra-cflags="-I /usr/local/include" --extra-ldflags=-LIBPATH:/usr/local/lib --prefix=./install
