@@ -6046,7 +6046,7 @@ for func in $COMPLEX_FUNCS; do
 done
 
 # these are off by default, so fail if requested and not available
-enabled libparreader 	  && require libparreader "parreader.h parreader_types.h" parReader_getPicStructSize -lparreader
+enabled libparreader 	  && require # libparreader "parreader.h parreader_types.h" parReader_getPicStructSize -lparreader
 enabled cuda_sdk          && require cuda_sdk cuda.h cuCtxCreate -lcuda
 enabled chromaprint       && require chromaprint chromaprint.h chromaprint_get_version -lchromaprint
 enabled decklink          && { require_headers DeckLinkAPI.h &&

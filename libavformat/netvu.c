@@ -22,7 +22,13 @@
 
 #include <ctype.h>
 #include <string.h>
+
+#if defined(_WIN32) || defined(WIN32)
+#include <string.h>
+#else
+#include <string.h>
 #include <strings.h>
+#endif
 
 #include "avformat.h"
 #include "internal.h"

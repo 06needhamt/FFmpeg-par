@@ -24,8 +24,12 @@
  * @file
  * AD-Holdings PAR file demuxer
  */
-
+#if defined(_WIN32) || defined(WIN32)
+#include <string.h>
+#else
 #include <strings.h>
+#endif
+
 #include <parreader.h>
 
 #include "avformat.h"

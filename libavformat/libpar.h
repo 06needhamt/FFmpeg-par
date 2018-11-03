@@ -22,6 +22,11 @@
 #ifndef AVFORMAT_LIBPAR_H
 #define AVFORMAT_LIBPAR_H
 
+#if defined(_WIN32) || defined(WIN32)
+// #pragma comment(lib, "parreader.lib" )
+#pragma comment(lib, "parreader_imp.lib" )
+#endif
+
 #include "avformat.h"
 
 

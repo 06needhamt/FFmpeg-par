@@ -25,7 +25,11 @@
  * AD-Holdings demuxer for AD stream format (binary)
  */
 
+#if defined(_WIN32) || defined(WIN32)
+#include <string.h>
+#else
 #include <strings.h>
+#endif
 
 #include "avformat.h"
 #include "libavutil/avstring.h"

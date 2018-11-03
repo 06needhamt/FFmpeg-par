@@ -20,7 +20,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#if defined(_WIN32) || defined(WIN32)
+#include <string.h>
+#else
 #include <strings.h>
+#endif
 
 #include "internal.h"
 #include "url.h"

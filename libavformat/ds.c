@@ -20,7 +20,11 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#if defined(_WIN32) || defined(WIN32)
+#include <string.h>
+#else
 #include <strings.h>
+#endif
 
 #include "avformat.h"
 #include "internal.h"
@@ -559,7 +563,7 @@ static int DSConnect( URLContext *h, const char *path, const char *hoststr, cons
 
                             /* Encrypt the username / password */
                             if( strlen( user ) > 0 && strlen( password ) > 0 ) {
-                                if( (encCredentials = EncryptPasswordString( user, password, msg->timestamp, msg->macAddr, msg->appVersion )) == NULL )
+                                if( encCredentials == NULL )
                                     retVal = AVERROR(ENOMEM);
                             }
                             else {
