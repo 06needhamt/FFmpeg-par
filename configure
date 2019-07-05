@@ -317,6 +317,7 @@ External library support:
   --enable-vapoursynth     enable VapourSynth demuxer [no]
   --disable-xlib           disable xlib [autodetect]
   --disable-zlib           disable zlib [autodetect]
+  --enable-libparreader    enable PAR (de)muxing via libparreader [no]
 
   The following libraries provide various hardware acceleration features:
   --disable-amf            disable AMF video encoding code [autodetect]
@@ -1720,6 +1721,7 @@ EXTERNAL_LIBRARY_NONFREE_LIST="
     libfdk_aac
     openssl
     libtls
+    libparreader
 "
 
 EXTERNAL_LIBRARY_VERSION3_LIST="
@@ -2768,6 +2770,8 @@ on2avc_decoder_select="mdct"
 opus_decoder_deps="swresample"
 opus_decoder_select="mdct15"
 opus_encoder_select="audio_frame_queue mdct15"
+libparreader_demuxer_deps="libparreader"
+libparreader_muxer_deps="libparreader"
 png_decoder_deps="zlib"
 png_encoder_deps="zlib"
 png_encoder_select="llvidencdsp"
@@ -6136,7 +6140,10 @@ for func in $COMPLEX_FUNCS; do
 done
 
 # these are off by default, so fail if requested and not available
+
 enabled cuda_nvcc         && { check_nvcc || die "ERROR: failed checking for nvcc."; }
+enabled libparreader 	  && require libparreader "parreader.h parreader_types.h" parReader_getPicStructSize -lparreader
+enabled cuda_sdk          && require cuda_sdk cuda.h cuCtxCreate -lcuda
 enabled chromaprint       && require chromaprint chromaprint.h chromaprint_get_version -lchromaprint
 enabled decklink          && { require_headers DeckLinkAPI.h &&
                                { test_cpp_condition DeckLinkAPIVersion.h "BLACKMAGIC_DECKLINK_API_VERSION >= 0x0a090500" || die "ERROR: Decklink API version must be >= 10.9.5."; } }

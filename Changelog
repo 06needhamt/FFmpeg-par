@@ -35,6 +35,7 @@ version <next>:
 - IFV demuxer
 - derain filter
 - deesser filter
+- AD Holdings PAR Muxer and Demuxer
 
 
 version 4.1:
