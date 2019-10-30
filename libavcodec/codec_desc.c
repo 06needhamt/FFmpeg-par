@@ -1733,6 +1733,13 @@ static const AVCodecDescriptor codec_descriptors[] = {
         .long_name = NULL_IF_CONFIG_SMALL("Infinity IMM5"),
         .props     = AV_CODEC_PROP_LOSSY,
     },
+    {
+        .id        = AV_CODEC_ID_AMV2,
+        .type      = AVMEDIA_TYPE_VIDEO,
+        .name      = "amv2",
+        .long_name = NULL_IF_CONFIG_SMALL("AmaRecTV AMV2"),
+        .props     = AV_CODEC_PROP_LOSSLESS,
+    },
 
     /* various PCM "codecs" */
     {
