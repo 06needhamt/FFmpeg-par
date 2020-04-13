@@ -138,6 +138,29 @@ static int mov_metadata_gnre(MOVContext *c, AVIOContext *pb,
     return 0;
 }
 
+static int mov_metadata_imir(MOVContext *c, AVIOContext *pb, unsigned len)
+{
+    const char *key = "image_mirroring";
+    unsigned int data = avio_r8(pb);
+
+    unsigned int reserved = data & 0x80;
+    unsigned int axis     = data & 0x01;
+
+    return av_dict_set_int(&c->fc->metadata, key, (reserved | axis), 0);
+}
+
+
+static int mov_metadata_irot(MOVContext *c, AVIOContext *pb, unsigned len)
+{
+    const char *key = "image_rotation";
+    unsigned int data = avio_r8(pb);
+
+    unsigned int reserved = data & 0x40;
+    unsigned int angle     = data & 0x03;
+
+    return av_dict_set_int(&c->fc->metadata, key, (reserved | angle), 0);
+}
+
 static const uint32_t mac_to_unicode[128] = {
     0x00C4,0x00C5,0x00C7,0x00C9,0x00D1,0x00D6,0x00DC,0x00E1,
     0x00E0,0x00E2,0x00E4,0x00E3,0x00E5,0x00E7,0x00E9,0x00E8,
@@ -225,6 +248,79 @@ static int mov_read_covr(MOVContext *c, AVIOContext *pb, int type, int len)
     st->codecpar->codec_id   = id;
 
     return 0;
+}
+
+static int mov_metadata_pixi(MOVContext *c, AVIOContext *pb, unsigned len)
+{
+    unsigned int num_channels = avio_r8(pb);
+    char *bits_per_pixel = av_malloc(num_channels);
+    const char *key = "pixel"; 
+
+    if (len < num_channels + 1) {
+        av_log(c->fc, AV_LOG_ERROR, "pixi too short\n");
+        return AVERROR_INVALIDDATA;
+    }
+
+    for (unsigned int i = 0; i < num_channels; i++) {
+        bits_per_pixel[i] = avio_r8(pb);
+    }
+
+    return av_dict_set(&c->fc->metadata, key, bits_per_pixel, 0);
+}
+
+static int mov_metadata_ispe(MOVContext *c, AVIOContext *pb, unsigned len)
+{
+    unsigned int image_width;
+    unsigned int image_height;
+    int64_t value;
+    const char *key = "image_spacial_extents"; 
+
+    if (len < 2 * sizeof(int)) {
+        av_log(c->fc, AV_LOG_ERROR, "ispe too short\n");
+        return AVERROR_INVALIDDATA;
+    }
+
+    image_width = avio_rb32(pb);
+    image_height = avio_rb32(pb);
+    value = ((int64_t)image_width << 32 | image_height);
+
+    return av_dict_set_int(&c->fc->metadata, key, value, 0);
+}
+
+static int mov_metadata_auxc(MOVContext *c, AVIOContext *pb, unsigned len)
+{
+    unsigned int *aux_subtype;
+    char *aux_type;
+    const char *key = "auxiliary"; 
+    size_t aux_type_len = strlen(pb->buffer);
+    int bytes_read = 0;
+    
+    aux_type = av_malloc(aux_type_len);
+    bytes_read = avio_read(pb, aux_type, aux_type_len);
+
+    if(bytes_read != aux_type_len)
+        return AVERROR(bytes_read);
+
+    return av_dict_set(&c->fc->metadata, key, aux_type, 0);
+}
+
+static int mov_metadata_rloc(MOVContext *c, AVIOContext *pb, unsigned len)
+{
+    unsigned int horisontal_offset;
+    unsigned int vertical_offset;
+    int64_t value;
+    const char *key = "relative_location"; 
+
+    if (len < 2 * sizeof(int)) {
+        av_log(c->fc, AV_LOG_ERROR, "rloc too short\n");
+        return AVERROR_INVALIDDATA;
+    }
+
+    horisontal_offset = avio_rb32(pb);
+    vertical_offset = avio_rb32(pb);
+    value = ((int64_t)horisontal_offset << 32 | vertical_offset);
+
+    return av_dict_set_int(&c->fc->metadata, key, value, 0);
 }
 
 // 3GPP TS 26.244
@@ -316,7 +412,11 @@ static int mov_read_udta_string(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     case MKTAG( 'a','k','I','D'): key = "account_type";
         parse = mov_metadata_int8_no_padding; break;
     case MKTAG( 'a','p','I','D'): key = "account_id"; break;
+    case MKTAG( 'a','u','x','C'): key = "auxiliary";
+        return mov_metadata_auxc(c, pb, atom.size);
     case MKTAG( 'c','a','t','g'): key = "category"; break;
+    case MKTAG( 'c','l','a','p'): key = "clean_aperture"; break;
+    case MKTAG( 'c','o','l','r'): key = "color"; break;
     case MKTAG( 'c','p','i','l'): key = "compilation";
         parse = mov_metadata_int8_no_padding; break;
     case MKTAG( 'c','p','r','t'): key = "copyright"; break;
@@ -330,6 +430,13 @@ static int mov_read_udta_string(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         parse = mov_metadata_gnre; break;
     case MKTAG( 'h','d','v','d'): key = "hd_video";
         parse = mov_metadata_int8_no_padding; break;
+    case MKTAG( 'i','m','i','r'): key = "image_mirroring";
+        return mov_metadata_imir(c, pb, atom.size);
+    case MKTAG( 'i','r','o','t'): key = "image_rotation";
+        return mov_metadata_irot(c, pb, atom.size);
+    case MKTAG( 'i','s','e','l'): key = "layer_selector"; break;
+    case MKTAG( 'i','s','p','e'): key = "image_spacial_extents"; 
+        return mov_metadata_ispe(c, pb, atom.size);
     case MKTAG( 'H','M','M','T'):
         return mov_metadata_hmmt(c, pb, atom.size);
     case MKTAG( 'k','e','y','w'): key = "keywords";  break;
@@ -338,11 +445,16 @@ static int mov_read_udta_string(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         return mov_metadata_loci(c, pb, atom.size);
     case MKTAG( 'm','a','n','u'): key = "make"; break;
     case MKTAG( 'm','o','d','l'): key = "model"; break;
+    case MKTAG( 'p','a','s','p'): key = "pixel_aspect_ratio"; break; 
     case MKTAG( 'p','c','s','t'): key = "podcast";
         parse = mov_metadata_int8_no_padding; break;
     case MKTAG( 'p','g','a','p'): key = "gapless_playback";
         parse = mov_metadata_int8_no_padding; break;
+    case MKTAG( 'p','i','x','i'): key = "pixel"; 
+        return mov_metadata_pixi(c, pb, atom.size);
     case MKTAG( 'p','u','r','d'): key = "purchase_date"; break;
+    case MKTAG( 'r','l','o','c'): key = "relative_location"; 
+        return mov_metadata_rloc(c, pb, atom.size);
     case MKTAG( 'r','t','n','g'): key = "rating";
         parse = mov_metadata_int8_no_padding; break;
     case MKTAG( 's','o','a','a'): key = "sort_album_artist"; break;
