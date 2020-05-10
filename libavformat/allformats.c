@@ -131,6 +131,7 @@ extern AVOutputFormat ff_dv_muxer;
 extern AVInputFormat  ff_dvbsub_demuxer;
 extern AVInputFormat  ff_dvbtxt_demuxer;
 extern AVInputFormat  ff_dxa_demuxer;
+extern AVInputFormat  ff_dynacolor_demuxer;
 extern AVInputFormat  ff_ea_demuxer;
 extern AVInputFormat  ff_ea_cdata_demuxer;
 extern AVInputFormat  ff_eac3_demuxer;
