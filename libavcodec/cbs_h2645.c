@@ -233,6 +233,16 @@ static int cbs_write_se_golomb(CodedBitstreamContext *ctx, PutBitContext *pbc,
     return 0;
 }
 
+// payload_extension_present() - true if we are before the last 1-bit
+// in the payload structure, which must be in the last byte.
+static int cbs_h265_payload_extension_present(GetBitContext *gbc, uint32_t payload_size,
+                                              int cur_pos)
+{
+    int bits_left = payload_size * 8 - cur_pos;
+    return (bits_left > 0 &&
+            (bits_left > 7 || show_bits(gbc, bits_left) & MAX_UINT_BITS(bits_left - 1)));
+}
+
 #define HEADER(name) do { \
         ff_cbs_trace_header(ctx, name); \
     } while (0)
@@ -250,18 +260,18 @@ static int cbs_write_se_golomb(CodedBitstreamContext *ctx, PutBitContext *pbc,
 #define SUBSCRIPTS(subs, ...) (subs > 0 ? ((int[subs + 1]){ subs, __VA_ARGS__ }) : NULL)
 
 #define u(width, name, range_min, range_max) \
-        xu(width, name, current->name, range_min, range_max, 0)
+        xu(width, name, current->name, range_min, range_max, 0, )
 #define ub(width, name) \
-        xu(width, name, current->name, 0, MAX_UINT_BITS(width), 0)
+        xu(width, name, current->name, 0, MAX_UINT_BITS(width), 0, )
 #define flag(name) ub(1, name)
 #define ue(name, range_min, range_max) \
-        xue(name, current->name, range_min, range_max, 0)
+        xue(name, current->name, range_min, range_max, 0, )
 #define i(width, name, range_min, range_max) \
-        xi(width, name, current->name, range_min, range_max, 0)
+        xi(width, name, current->name, range_min, range_max, 0, )
 #define ib(width, name) \
-        xi(width, name, current->name, MIN_INT_BITS(width), MAX_INT_BITS(width), 0)
+        xi(width, name, current->name, MIN_INT_BITS(width), MAX_INT_BITS(width), 0, )
 #define se(name, range_min, range_max) \
-        xse(name, current->name, range_min, range_max, 0)
+        xse(name, current->name, range_min, range_max, 0, )
 
 #define us(width, name, range_min, range_max, subs, ...) \
         xu(width, name, current->name, range_min, range_max, subs, __VA_ARGS__)
@@ -280,7 +290,7 @@ static int cbs_write_se_golomb(CodedBitstreamContext *ctx, PutBitContext *pbc,
 
 #define fixed(width, name, value) do { \
         av_unused uint32_t fixed_value = value; \
-        xu(width, name, fixed_value, value, value, 0); \
+        xu(width, name, fixed_value, value, value, 0, ); \
     } while (0)
 
 
@@ -543,6 +553,7 @@ static void cbs_h265_free_sei_payload(H265RawSEIPayload *payload)
         av_buffer_unref(&payload->payload.other.data_ref);
         break;
     }
+    av_buffer_unref(&payload->extension_data.data_ref);
 }
 
 static void cbs_h265_free_sei(void *opaque, uint8_t *content)

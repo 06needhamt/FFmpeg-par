@@ -53,6 +53,10 @@ typedef struct VulkanDevicePriv {
     VkPhysicalDeviceProperties props;
     VkPhysicalDeviceMemoryProperties mprops;
 
+    /* Queues */
+    uint32_t qfs[3];
+    int num_qfs;
+
     /* Debug callback */
     VkDebugUtilsMessengerEXT debug_ctx;
 
@@ -98,9 +102,13 @@ typedef struct AVVkFrameInternal {
         list = av_realloc_array(list, sizeof(*list), ++count);                 \
         if (!list) {                                                           \
             err = AVERROR(ENOMEM);                                             \
-            goto end;                                                          \
+            goto fail;                                                         \
         }                                                                      \
-        list[count - 1] = val;                                                 \
+        list[count - 1] = av_strdup(val);                                      \
+        if (!list[count - 1]) {                                                \
+            err = AVERROR(ENOMEM);                                             \
+            goto fail;                                                         \
+        }                                                                      \
     } while(0)
 
 static const struct {
@@ -177,8 +185,7 @@ enum VulkanExtensions {
     EXT_EXTERNAL_FD_MEMORY     = 1ULL <<  2, /* VK_KHR_external_memory_fd */
     EXT_EXTERNAL_FD_SEM        = 1ULL <<  3, /* VK_KHR_external_semaphore_fd */
 
-    EXT_OPTIONAL               = 1ULL << 62,
-    EXT_REQUIRED               = 1ULL << 63,
+    EXT_NO_FLAG                = 1ULL << 63,
 };
 
 typedef struct VulkanOptExtension {
@@ -261,7 +268,7 @@ static VkBool32 vk_dbg_callback(VkDebugUtilsMessageSeverityFlagBitsEXT severity,
     return 0;
 }
 
-static int check_extensions(AVHWDeviceContext *ctx, int dev,
+static int check_extensions(AVHWDeviceContext *ctx, int dev, AVDictionary *opts,
                             const char * const **dst, uint32_t *num, int debug)
 {
     const char *tstr;
@@ -273,6 +280,8 @@ static int check_extensions(AVHWDeviceContext *ctx, int dev,
     const char *mod;
     int optional_exts_num;
     uint32_t sup_ext_count;
+    char *user_exts_str = NULL;
+    AVDictionaryEntry *user_exts;
     VkExtensionProperties *sup_ext;
     const VulkanOptExtension *optional_exts;
 
@@ -280,6 +289,14 @@ static int check_extensions(AVHWDeviceContext *ctx, int dev,
         mod = "instance";
         optional_exts = optional_instance_exts;
         optional_exts_num = FF_ARRAY_ELEMS(optional_instance_exts);
+        user_exts = av_dict_get(opts, "instance_extensions", NULL, 0);
+        if (user_exts) {
+            user_exts_str = av_strdup(user_exts->value);
+            if (!user_exts_str) {
+                err = AVERROR(ENOMEM);
+                goto fail;
+            }
+        }
         vkEnumerateInstanceExtensionProperties(NULL, &sup_ext_count, NULL);
         sup_ext = av_malloc_array(sup_ext_count, sizeof(VkExtensionProperties));
         if (!sup_ext)
@@ -289,6 +306,14 @@ static int check_extensions(AVHWDeviceContext *ctx, int dev,
         mod = "device";
         optional_exts = optional_device_exts;
         optional_exts_num = FF_ARRAY_ELEMS(optional_device_exts);
+        user_exts = av_dict_get(opts, "device_extensions", NULL, 0);
+        if (user_exts) {
+            user_exts_str = av_strdup(user_exts->value);
+            if (!user_exts_str) {
+                err = AVERROR(ENOMEM);
+                goto fail;
+            }
+        }
         vkEnumerateDeviceExtensionProperties(hwctx->phys_dev, NULL,
                                              &sup_ext_count, NULL);
         sup_ext = av_malloc_array(sup_ext_count, sizeof(VkExtensionProperties));
@@ -299,9 +324,7 @@ static int check_extensions(AVHWDeviceContext *ctx, int dev,
     }
 
     for (int i = 0; i < optional_exts_num; i++) {
-        int req = optional_exts[i].flag & EXT_REQUIRED;
         tstr = optional_exts[i].name;
-
         found = 0;
         for (int j = 0; j < sup_ext_count; j++) {
             if (!strcmp(tstr, sup_ext[j].extensionName)) {
@@ -309,20 +332,11 @@ static int check_extensions(AVHWDeviceContext *ctx, int dev,
                 break;
             }
         }
-        if (!found) {
-            int lvl = req ? AV_LOG_ERROR : AV_LOG_VERBOSE;
-            av_log(ctx, lvl, "Extension \"%s\" not found!\n", tstr);
-            if (req) {
-                err = AVERROR(EINVAL);
-                goto end;
-            }
+        if (!found)
             continue;
-        }
-        if (!req)
-            p->extensions |= optional_exts[i].flag;
 
         av_log(ctx, AV_LOG_VERBOSE, "Using %s extension \"%s\"\n", mod, tstr);
-
+        p->extensions |= optional_exts[i].flag;
         ADD_VAL_TO_LIST(extension_names, extensions_found, tstr);
     }
 
@@ -336,19 +350,50 @@ static int check_extensions(AVHWDeviceContext *ctx, int dev,
             }
         }
         if (found) {
+            av_log(ctx, AV_LOG_VERBOSE, "Using %s extension \"%s\"\n", mod, tstr);
             ADD_VAL_TO_LIST(extension_names, extensions_found, tstr);
         } else {
             av_log(ctx, AV_LOG_ERROR, "Debug extension \"%s\" not found!\n",
                    tstr);
             err = AVERROR(EINVAL);
-            goto end;
+            goto fail;
+        }
+    }
+
+    if (user_exts_str) {
+        char *save, *token = av_strtok(user_exts_str, "+", &save);
+        while (token) {
+            found = 0;
+            for (int j = 0; j < sup_ext_count; j++) {
+                if (!strcmp(token, sup_ext[j].extensionName)) {
+                    found = 1;
+                    break;
+                }
+            }
+            if (found) {
+                av_log(ctx, AV_LOG_VERBOSE, "Using %s extension \"%s\"\n", mod, token);
+                ADD_VAL_TO_LIST(extension_names, extensions_found, token);
+            } else {
+                av_log(ctx, AV_LOG_WARNING, "%s extension \"%s\" not found, excluding.\n",
+                       mod, token);
+            }
+            token = av_strtok(NULL, "+", &save);
         }
     }
 
     *dst = extension_names;
     *num = extensions_found;
 
-end:
+    av_free(user_exts_str);
+    av_free(sup_ext);
+    return 0;
+
+fail:
+    if (extension_names)
+        for (int i = 0; i < extensions_found; i++)
+            av_free((void *)extension_names[i]);
+    av_free(extension_names);
+    av_free(user_exts_str);
     av_free(sup_ext);
     return err;
 }
@@ -376,13 +421,13 @@ static int create_instance(AVHWDeviceContext *ctx, AVDictionary *opts)
     };
 
     /* Check for present/missing extensions */
-    err = check_extensions(ctx, 0, &inst_props.ppEnabledExtensionNames,
+    err = check_extensions(ctx, 0, opts, &inst_props.ppEnabledExtensionNames,
                            &inst_props.enabledExtensionCount, debug_mode);
     if (err < 0)
         return err;
 
     if (debug_mode) {
-        static const char *layers[] = { "VK_LAYER_LUNARG_standard_validation" };
+        static const char *layers[] = { "VK_LAYER_KHRONOS_validation" };
         inst_props.ppEnabledLayerNames = layers;
         inst_props.enabledLayerCount = FF_ARRAY_ELEMS(layers);
     }
@@ -390,13 +435,13 @@ static int create_instance(AVHWDeviceContext *ctx, AVDictionary *opts)
     /* Try to create the instance */
     ret = vkCreateInstance(&inst_props, hwctx->alloc, &hwctx->inst);
 
-    /* Free used memory */
-    av_free((void *)inst_props.ppEnabledExtensionNames);
-
     /* Check for errors */
     if (ret != VK_SUCCESS) {
         av_log(ctx, AV_LOG_ERROR, "Instance creation failure: %s\n",
                vk_ret2str(ret));
+        for (int i = 0; i < inst_props.enabledExtensionCount; i++)
+            av_free((void *)inst_props.ppEnabledExtensionNames[i]);
+        av_free((void *)inst_props.ppEnabledExtensionNames);
         return AVERROR_EXTERNAL;
     }
 
@@ -418,6 +463,9 @@ static int create_instance(AVHWDeviceContext *ctx, AVDictionary *opts)
         pfn_vkCreateDebugUtilsMessengerEXT(hwctx->inst, &dbg,
                                            hwctx->alloc, &p->debug_ctx);
     }
+
+    hwctx->enabled_inst_extensions = inst_props.ppEnabledExtensionNames;
+    hwctx->nb_enabled_inst_extensions = inst_props.enabledExtensionCount;
 
     return 0;
 }
@@ -569,6 +617,7 @@ end:
 static int search_queue_families(AVHWDeviceContext *ctx, VkDeviceCreateInfo *cd)
 {
     uint32_t num;
+    float *weights;
     VkQueueFamilyProperties *qs = NULL;
     AVVulkanDeviceContext *hwctx = ctx->hwctx;
     int graph_index = -1, comp_index = -1, tx_index = -1;
@@ -607,41 +656,53 @@ static int search_queue_families(AVHWDeviceContext *ctx, VkDeviceCreateInfo *cd)
                  (i != comp_index), tx_index)
 
 #undef SEARCH_FLAGS
-#define QF_FLAGS(flags)                                                        \
-    ((flags) & VK_QUEUE_GRAPHICS_BIT      ) ? "(graphics) " : "",              \
-    ((flags) & VK_QUEUE_COMPUTE_BIT       ) ? "(compute) "  : "",              \
-    ((flags) & VK_QUEUE_TRANSFER_BIT      ) ? "(transfer) " : "",              \
-    ((flags) & VK_QUEUE_SPARSE_BINDING_BIT) ? "(sparse) "   : ""
+#define ADD_QUEUE(fidx, graph, comp, tx)                                                 \
+    av_log(ctx, AV_LOG_VERBOSE, "Using queue family %i (total queues: %i) for %s%s%s\n", \
+           fidx, qs[fidx].queueCount, graph ? "graphics " : "",                          \
+           comp ? "compute " : "", tx ? "transfers " : "");                              \
+    av_log(ctx, AV_LOG_VERBOSE, "    QF %i flags: %s%s%s%s\n", fidx,                     \
+           ((qs[fidx].queueFlags) & VK_QUEUE_GRAPHICS_BIT) ? "(graphics) " : "",         \
+           ((qs[fidx].queueFlags) & VK_QUEUE_COMPUTE_BIT) ? "(compute) " : "",           \
+           ((qs[fidx].queueFlags) & VK_QUEUE_TRANSFER_BIT) ? "(transfers) " : "",        \
+           ((qs[fidx].queueFlags) & VK_QUEUE_SPARSE_BINDING_BIT) ? "(sparse) " : "");    \
+    pc[cd->queueCreateInfoCount].queueFamilyIndex = fidx;                                \
+    pc[cd->queueCreateInfoCount].queueCount = qs[fidx].queueCount;                       \
+    weights = av_malloc(qs[fidx].queueCount * sizeof(float));                            \
+    pc[cd->queueCreateInfoCount].pQueuePriorities = weights;                             \
+    if (!weights)                                                                        \
+        goto fail;                                                                       \
+    for (int i = 0; i < qs[fidx].queueCount; i++)                                        \
+        weights[i] = 1.0f;                                                               \
+    cd->queueCreateInfoCount++;
 
-    av_log(ctx, AV_LOG_VERBOSE, "Using queue family %i for graphics, "
-           "flags: %s%s%s%s\n", graph_index, QF_FLAGS(qs[graph_index].queueFlags));
-
+    ADD_QUEUE(graph_index, 1, comp_index < 0, tx_index < 0 && comp_index < 0)
     hwctx->queue_family_index      = graph_index;
-    hwctx->queue_family_tx_index   = graph_index;
     hwctx->queue_family_comp_index = graph_index;
-
-    pc[cd->queueCreateInfoCount++].queueFamilyIndex = graph_index;
+    hwctx->queue_family_tx_index   = graph_index;
 
     if (comp_index != -1) {
-        av_log(ctx, AV_LOG_VERBOSE, "Using queue family %i for compute, "
-               "flags: %s%s%s%s\n", comp_index, QF_FLAGS(qs[comp_index].queueFlags));
-        hwctx->queue_family_tx_index                    = comp_index;
-        hwctx->queue_family_comp_index                  = comp_index;
-        pc[cd->queueCreateInfoCount++].queueFamilyIndex = comp_index;
+        ADD_QUEUE(comp_index, 0, 1, tx_index < 0)
+        hwctx->queue_family_tx_index   = comp_index;
+        hwctx->queue_family_comp_index = comp_index;
     }
 
     if (tx_index != -1) {
-        av_log(ctx, AV_LOG_VERBOSE, "Using queue family %i for transfers, "
-               "flags: %s%s%s%s\n", tx_index, QF_FLAGS(qs[tx_index].queueFlags));
-        hwctx->queue_family_tx_index                    = tx_index;
-        pc[cd->queueCreateInfoCount++].queueFamilyIndex = tx_index;
+        ADD_QUEUE(tx_index, 0, 0, 1)
+        hwctx->queue_family_tx_index = tx_index;
     }
 
-#undef QF_FLAGS
-
+#undef ADD_QUEUE
     av_free(qs);
 
     return 0;
+
+fail:
+    av_freep(&pc[0].pQueuePriorities);
+    av_freep(&pc[1].pQueuePriorities);
+    av_freep(&pc[2].pQueuePriorities);
+    av_free(qs);
+
+    return AVERROR(ENOMEM);
 }
 
 static int create_exec_ctx(AVHWDeviceContext *ctx, VulkanExecCtx *cmd,
@@ -724,6 +785,14 @@ static void vulkan_device_free(AVHWDeviceContext *ctx)
     }
 
     vkDestroyInstance(hwctx->inst, hwctx->alloc);
+
+    for (int i = 0; i < hwctx->nb_enabled_inst_extensions; i++)
+        av_free((void *)hwctx->enabled_inst_extensions[i]);
+    av_free((void *)hwctx->enabled_inst_extensions);
+
+    for (int i = 0; i < hwctx->nb_enabled_dev_extensions; i++)
+        av_free((void *)hwctx->enabled_dev_extensions[i]);
+    av_free((void *)hwctx->enabled_dev_extensions);
 }
 
 static int vulkan_device_create_internal(AVHWDeviceContext *ctx,
@@ -736,15 +805,9 @@ static int vulkan_device_create_internal(AVHWDeviceContext *ctx,
     VulkanDevicePriv *p = ctx->internal->priv;
     AVVulkanDeviceContext *hwctx = ctx->hwctx;
     VkDeviceQueueCreateInfo queue_create_info[3] = {
-        {   .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .pQueuePriorities = (float []){ 1.0f },
-            .queueCount       = 1, },
-        {   .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .pQueuePriorities = (float []){ 1.0f },
-            .queueCount       = 1, },
-        {   .sType            = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-            .pQueuePriorities = (float []){ 1.0f },
-            .queueCount       = 1, },
+        { .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, },
+        { .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, },
+        { .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, },
     };
 
     VkDeviceCreateInfo dev_info = {
@@ -777,18 +840,27 @@ static int vulkan_device_create_internal(AVHWDeviceContext *ctx,
     if ((err = search_queue_families(ctx, &dev_info)))
         goto end;
 
-    if ((err = check_extensions(ctx, 1, &dev_info.ppEnabledExtensionNames,
-                                &dev_info.enabledExtensionCount, 0)))
+    if ((err = check_extensions(ctx, 1, opts, &dev_info.ppEnabledExtensionNames,
+                                &dev_info.enabledExtensionCount, 0))) {
+        av_free((void *)queue_create_info[0].pQueuePriorities);
+        av_free((void *)queue_create_info[1].pQueuePriorities);
+        av_free((void *)queue_create_info[2].pQueuePriorities);
         goto end;
+    }
 
     ret = vkCreateDevice(hwctx->phys_dev, &dev_info, hwctx->alloc,
                          &hwctx->act_dev);
 
-    av_free((void *)dev_info.ppEnabledExtensionNames);
+    av_free((void *)queue_create_info[0].pQueuePriorities);
+    av_free((void *)queue_create_info[1].pQueuePriorities);
+    av_free((void *)queue_create_info[2].pQueuePriorities);
 
     if (ret != VK_SUCCESS) {
         av_log(ctx, AV_LOG_ERROR, "Device creation failure: %s\n",
                vk_ret2str(ret));
+        for (int i = 0; i < dev_info.enabledExtensionCount; i++)
+            av_free((void *)dev_info.ppEnabledExtensionNames[i]);
+        av_free((void *)dev_info.ppEnabledExtensionNames);
         err = AVERROR_EXTERNAL;
         goto end;
     }
@@ -797,6 +869,9 @@ static int vulkan_device_create_internal(AVHWDeviceContext *ctx,
     opt_d = av_dict_get(opts, "linear_images", NULL, 0);
     if (opt_d)
         p->use_linear_images = strtol(opt_d->value, NULL, 10);
+
+    hwctx->enabled_dev_extensions = dev_info.ppEnabledExtensionNames;
+    hwctx->nb_enabled_dev_extensions = dev_info.enabledExtensionCount;
 
 end:
     return err;
@@ -808,6 +883,17 @@ static int vulkan_device_init(AVHWDeviceContext *ctx)
     uint32_t queue_num;
     AVVulkanDeviceContext *hwctx = ctx->hwctx;
     VulkanDevicePriv *p = ctx->internal->priv;
+
+    /* Set device extension flags */
+    for (int i = 0; i < hwctx->nb_enabled_dev_extensions; i++) {
+        for (int j = 0; j < FF_ARRAY_ELEMS(optional_device_exts); j++) {
+            if (!strcmp(hwctx->enabled_dev_extensions[i],
+                        optional_device_exts[j].name)) {
+                p->extensions |= optional_device_exts[j].flag;
+                break;
+            }
+        }
+    }
 
     vkGetPhysicalDeviceQueueFamilyProperties(hwctx->phys_dev, &queue_num, NULL);
     if (!queue_num) {
@@ -827,6 +913,14 @@ if (n >= queue_num) {                                                           
     CHECK_QUEUE("compute",  hwctx->queue_family_comp_index)
 
 #undef CHECK_QUEUE
+
+    p->qfs[p->num_qfs++] = hwctx->queue_family_index;
+    if ((hwctx->queue_family_tx_index != hwctx->queue_family_index) &&
+        (hwctx->queue_family_tx_index != hwctx->queue_family_comp_index))
+        p->qfs[p->num_qfs++] = hwctx->queue_family_tx_index;
+    if ((hwctx->queue_family_comp_index != hwctx->queue_family_index) &&
+        (hwctx->queue_family_comp_index != hwctx->queue_family_tx_index))
+        p->qfs[p->num_qfs++] = hwctx->queue_family_comp_index;
 
     /* Create exec context - if there's something invalid this will error out */
     err = create_exec_ctx(ctx, &p->cmd, hwctx->queue_family_tx_index);
@@ -1142,12 +1236,14 @@ static int alloc_bind_mem(AVHWFramesContext *hwfc, AVVkFrame *f,
 enum PrepMode {
     PREP_MODE_WRITE,
     PREP_MODE_RO_SHADER,
+    PREP_MODE_EXTERNAL_EXPORT,
 };
 
 static int prepare_frame(AVHWFramesContext *hwfc, VulkanExecCtx *ectx,
                          AVVkFrame *frame, enum PrepMode pmode)
 {
     VkResult ret;
+    uint32_t dst_qf;
     VkImageLayout new_layout;
     VkAccessFlags new_access;
     AVHWDeviceContext *ctx = hwfc->device_ctx;
@@ -1170,14 +1266,28 @@ static int prepare_frame(AVHWFramesContext *hwfc, VulkanExecCtx *ectx,
         .signalSemaphoreCount = planes,
     };
 
+    VkPipelineStageFlagBits wait_st[AV_NUM_DATA_POINTERS];
+    for (int i = 0; i < planes; i++)
+        wait_st[i] = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+
     switch (pmode) {
     case PREP_MODE_WRITE:
         new_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
         new_access = VK_ACCESS_TRANSFER_WRITE_BIT;
+        dst_qf     = VK_QUEUE_FAMILY_IGNORED;
         break;
     case PREP_MODE_RO_SHADER:
         new_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         new_access = VK_ACCESS_TRANSFER_READ_BIT;
+        dst_qf     = VK_QUEUE_FAMILY_IGNORED;
+        break;
+    case PREP_MODE_EXTERNAL_EXPORT:
+        new_layout = VK_IMAGE_LAYOUT_GENERAL;
+        new_access = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+        dst_qf     = VK_QUEUE_FAMILY_EXTERNAL_KHR;
+        s_info.pWaitSemaphores = frame->sem;
+        s_info.pWaitDstStageMask = wait_st;
+        s_info.waitSemaphoreCount = planes;
         break;
     }
 
@@ -1195,7 +1305,7 @@ static int prepare_frame(AVHWFramesContext *hwfc, VulkanExecCtx *ectx,
         img_bar[i].oldLayout = frame->layout[i];
         img_bar[i].newLayout = new_layout;
         img_bar[i].srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        img_bar[i].dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        img_bar[i].dstQueueFamilyIndex = dst_qf;
         img_bar[i].image = frame->img[i];
         img_bar[i].subresourceRange.levelCount = 1;
         img_bar[i].subresourceRange.layerCount = 1;
@@ -1262,21 +1372,24 @@ static int create_frame(AVHWFramesContext *hwfc, AVVkFrame **frame,
         const int p_h = i > 0 ? AV_CEIL_RSHIFT(h, desc->log2_chroma_h) : h;
 
         VkImageCreateInfo image_create_info = {
-            .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .pNext         = create_pnext,
-            .imageType     = VK_IMAGE_TYPE_2D,
-            .format        = img_fmts[i],
-            .extent.width  = p_w,
-            .extent.height = p_h,
-            .extent.depth  = 1,
-            .mipLevels     = 1,
-            .arrayLayers   = 1,
-            .flags         = VK_IMAGE_CREATE_ALIAS_BIT,
-            .tiling        = tiling,
-            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-            .usage         = usage,
-            .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-            .samples       = VK_SAMPLE_COUNT_1_BIT,
+            .sType                 = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .pNext                 = create_pnext,
+            .imageType             = VK_IMAGE_TYPE_2D,
+            .format                = img_fmts[i],
+            .extent.width          = p_w,
+            .extent.height         = p_h,
+            .extent.depth          = 1,
+            .mipLevels             = 1,
+            .arrayLayers           = 1,
+            .flags                 = VK_IMAGE_CREATE_ALIAS_BIT,
+            .tiling                = tiling,
+            .initialLayout         = VK_IMAGE_LAYOUT_UNDEFINED,
+            .usage                 = usage,
+            .samples               = VK_SAMPLE_COUNT_1_BIT,
+            .pQueueFamilyIndices   = p->qfs,
+            .queueFamilyIndexCount = p->num_qfs,
+            .sharingMode           = p->num_qfs > 1 ? VK_SHARING_MODE_CONCURRENT :
+                                                      VK_SHARING_MODE_EXCLUSIVE,
         };
 
         ret = vkCreateImage(hwctx->act_dev, &image_create_info,
@@ -1749,22 +1862,24 @@ static int vulkan_map_from_drm_frame_desc(AVHWFramesContext *hwfc, AVVkFrame **f
         const int p_h = i > 0 ? AV_CEIL_RSHIFT(hwfc->height, fmt_desc->log2_chroma_h) : hwfc->height;
 
         VkImageCreateInfo image_create_info = {
-            .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-            .pNext         = &einfo,
-            .imageType     = VK_IMAGE_TYPE_2D,
-            .format        = drm_to_vulkan_fmt(desc->layers[i].format),
-            .extent.width  = p_w,
-            .extent.height = p_h,
-            .extent.depth  = 1,
-            .mipLevels     = 1,
-            .arrayLayers   = 1,
-            .flags         = VK_IMAGE_CREATE_ALIAS_BIT |
-                             (signal_p ? VK_IMAGE_CREATE_DISJOINT_BIT : 0x0),
-            .tiling        = f->tiling,
-            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED, /* specs say so */
-            .usage         = DEFAULT_USAGE_FLAGS,
-            .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,
-            .samples       = VK_SAMPLE_COUNT_1_BIT,
+            .sType                 = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+            .pNext                 = &einfo,
+            .imageType             = VK_IMAGE_TYPE_2D,
+            .format                = drm_to_vulkan_fmt(desc->layers[i].format),
+            .extent.width          = p_w,
+            .extent.height         = p_h,
+            .extent.depth          = 1,
+            .mipLevels             = 1,
+            .arrayLayers           = 1,
+            .flags                 = VK_IMAGE_CREATE_ALIAS_BIT,
+            .tiling                = f->tiling,
+            .initialLayout         = VK_IMAGE_LAYOUT_UNDEFINED, /* specs say so */
+            .usage                 = DEFAULT_USAGE_FLAGS,
+            .samples               = VK_SAMPLE_COUNT_1_BIT,
+            .pQueueFamilyIndices   = p->qfs,
+            .queueFamilyIndexCount = p->num_qfs,
+            .sharingMode           = p->num_qfs > 1 ? VK_SHARING_MODE_CONCURRENT :
+                                                      VK_SHARING_MODE_EXCLUSIVE,
         };
 
         for (int j = 0; j < planes; j++) {
@@ -2200,6 +2315,10 @@ static int vulkan_map_to_drm(AVHWFramesContext *hwfc, AVFrame *dst,
     if (!drm_desc)
         return AVERROR(ENOMEM);
 
+    err = prepare_frame(hwfc, &p->cmd, f, PREP_MODE_EXTERNAL_EXPORT);
+    if (err < 0)
+        goto end;
+
     err = ff_hwframe_map_create(src->hw_frames_ctx, dst, src, &vulkan_unmap_to_drm, drm_desc);
     if (err < 0)
         goto end;
@@ -2256,7 +2375,7 @@ static int vulkan_map_to_drm(AVHWFramesContext *hwfc, AVFrame *dst,
 
         drm_desc->layers[i].planes[0].object_index = FFMIN(i, drm_desc->nb_objects - 1);
 
-        if (f->tiling != VK_IMAGE_TILING_OPTIMAL)
+        if (f->tiling == VK_IMAGE_TILING_OPTIMAL)
             continue;
 
         vkGetImageSubresourceLayout(hwctx->act_dev, f->img[i], &sub, &layout);
@@ -2636,7 +2755,7 @@ static int vulkan_transfer_data_from_mem(AVHWFramesContext *hwfc, AVFrame *dst,
         int h = src->height;
         int p_height = i > 0 ? AV_CEIL_RSHIFT(h, log2_chroma) : h;
 
-        tmp.linesize[i] = src->linesize[i];
+        tmp.linesize[i] = FFABS(src->linesize[i]);
         err = create_buf(dev_ctx, &buf[i], p_height,
                          &tmp.linesize[i], VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, NULL, NULL);
@@ -2791,7 +2910,7 @@ static int vulkan_transfer_data_to_mem(AVHWFramesContext *hwfc, AVFrame *dst,
         int h = dst->height;
         int p_height = i > 0 ? AV_CEIL_RSHIFT(h, log2_chroma) : h;
 
-        tmp.linesize[i] = dst->linesize[i];
+        tmp.linesize[i] = FFABS(dst->linesize[i]);
         err = create_buf(dev_ctx, &buf[i], p_height,
                          &tmp.linesize[i], VK_BUFFER_USAGE_TRANSFER_DST_BIT,
                          VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, NULL, NULL);
