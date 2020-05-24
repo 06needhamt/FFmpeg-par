@@ -120,7 +120,7 @@ int ff_frame_thread_encoder_init(AVCodecContext *avctx, AVDictionary *options){
 
 
     if(   !(avctx->thread_type & FF_THREAD_FRAME)
-       || !(avctx->codec->capabilities & AV_CODEC_CAP_INTRA_ONLY))
+       || !(avctx->codec->capabilities & AV_CODEC_CAP_FRAME_THREADS))
         return 0;
 
     if(   !avctx->thread_count
@@ -209,8 +209,9 @@ int ff_frame_thread_encoder_init(AVCodecContext *avctx, AVDictionary *options){
             int ret = av_opt_copy(thread_avctx->priv_data, avctx->priv_data);
             if (ret < 0)
                 goto fail;
-        } else
+        } else if (avctx->codec->priv_data_size) {
             memcpy(thread_avctx->priv_data, avctx->priv_data, avctx->codec->priv_data_size);
+        }
         thread_avctx->thread_count = 1;
         thread_avctx->active_thread_type &= ~FF_THREAD_FRAME;
 
