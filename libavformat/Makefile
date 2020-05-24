@@ -580,11 +580,21 @@ OBJS-$(CONFIG_YUV4MPEGPIPE_DEMUXER)      += yuv4mpegdec.o
 OBJS-$(CONFIG_YUV4MPEGPIPE_MUXER)        += yuv4mpegenc.o
 
 # external library muxers/demuxers
+OBJS-$(CONFIG_ADAUDIO_DEMUXER)           += adaudio.o
+OBJS-$(CONFIG_ADBINARY_DEMUXER)          += adbinary.o adcommon.o adjfif.o
+OBJS-$(CONFIG_ADMIME_DEMUXER)            += admime.o adcommon.o adjfif.o
+OBJS-$(CONFIG_ADRAW_DEMUXER)             += adraw.o adcommon.o adjfif.o
 OBJS-$(CONFIG_AVISYNTH_DEMUXER)          += avisynth.o
 OBJS-$(CONFIG_CHROMAPRINT_MUXER)         += chromaprint.o
+OBJS-$(CONFIG_DM_PROTOCOL)               += dsenc.o ds.o
+OBJS-$(CONFIG_DSPIC_DEMUXER)             += ds.o dspic.o adcommon.o
 OBJS-$(CONFIG_LIBGME_DEMUXER)            += libgme.o
 OBJS-$(CONFIG_LIBMODPLUG_DEMUXER)        += libmodplug.o
 OBJS-$(CONFIG_LIBOPENMPT_DEMUXER)        += libopenmpt.o
+OBJS-$(CONFIG_LIBPARREADER_DEMUXER)      += libpar.o adcommon.o
+OBJS-$(CONFIG_LIBPARREADER_MUXER) 	     += libpar.o adcommon.o
+OBJS-$(CONFIG_LIBMODPLUG_DEMUXER)        += libmodplug.o
+OBJS-$(CONFIG_NETVU_PROTOCOL)            += netvu.o
 OBJS-$(CONFIG_VAPOURSYNTH_DEMUXER)       += vapoursynth.o
 
 # protocols I/O

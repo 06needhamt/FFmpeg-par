@@ -321,6 +321,7 @@ External library support:
   --enable-vulkan          enable Vulkan code [no]
   --disable-xlib           disable xlib [autodetect]
   --disable-zlib           disable zlib [autodetect]
+  --enable-libparreader    enable PAR (de)muxing via libparreader [no]
 
   The following libraries provide various hardware acceleration features:
   --disable-amf            disable AMF video encoding code [autodetect]
@@ -1731,6 +1732,7 @@ EXTERNAL_LIBRARY_NONFREE_LIST="
     libfdk_aac
     openssl
     libtls
+    libparreader
 "
 
 EXTERNAL_LIBRARY_VERSION3_LIST="
@@ -2802,6 +2804,8 @@ on2avc_decoder_select="mdct"
 opus_decoder_deps="swresample"
 opus_decoder_select="mdct15"
 opus_encoder_select="audio_frame_queue mdct15"
+libparreader_demuxer_deps="libparreader"
+libparreader_muxer_deps="libparreader"
 png_decoder_deps="zlib"
 png_encoder_deps="zlib"
 png_encoder_select="llvidencdsp"
@@ -6260,6 +6264,7 @@ done
 
 # these are off by default, so fail if requested and not available
 enabled avisynth          && require_headers "avisynth/avisynth_c.h"
+enabled libparreader 	  && require libparreader "parreader.h parreader_types.h" parReader_getPicStructSize -lparreader
 enabled cuda_nvcc         && { check_nvcc cuda_nvcc || die "ERROR: failed checking for nvcc."; }
 enabled chromaprint       && require chromaprint chromaprint.h chromaprint_get_version -lchromaprint
 enabled decklink          && { require_headers DeckLinkAPI.h &&

@@ -104,6 +104,7 @@ version 4.2:
 - IFV demuxer
 - derain filter
 - deesser filter
+- AD Holdings PAR Muxer and Demuxer
 - mov muxer writes tracks with unspecified language instead of English by default
 - add support for using clang to compile CUDA kernels
 
