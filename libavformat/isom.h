@@ -251,7 +251,9 @@ typedef struct MOVContext {
     int found_moov;       ///< 'moov' atom has been found
     int found_mdat;       ///< 'mdat' atom has been found
     int found_hdlr_mdta;  ///< 'hdlr' atom with type 'mdta' has been found
+    int found_iloc;       ///< 'iloc' atom has been found (Used in HEIF Demuxer)
     int trak_index;       ///< Index of the current 'trak'
+    int cur_stream_index; ///< Stream currently being populated (Used in HEIF Demuxer)
     char **meta_keys;
     unsigned meta_keys_count;
     DVDemuxContext *dv_demux;
@@ -294,6 +296,12 @@ typedef struct MOVContext {
     int have_read_mfra_size;
     uint32_t mfra_size;
 } MOVContext;
+
+typedef enum HEIFOffsetType {
+    HEIF_OFFSET_FILE = 0,
+    HEIF_OFFSET_MDAT = 1,
+    HEIF_OFFSET_ITEM = 2
+} HEIFOffsetType;
 
 int ff_mp4_read_descr_len(AVIOContext *pb);
 int ff_mp4_read_descr(AVFormatContext *fc, AVIOContext *pb, int *tag);
