@@ -82,6 +82,8 @@ version <next>:
 - identity video filter
 - msad video filter
 - gophers protocol
+- Dynacolor MVC Demuxer
+- Dynacolor MVC Muxer
 
 
 version 4.3:
