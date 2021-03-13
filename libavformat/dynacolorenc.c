@@ -45,17 +45,12 @@ int ff_dyna_write_file_header(AVFormatContext *ctx, AVIOContext *pb,
     header->Basic.Channel_Ext = 0x00;
 
     if(ctx->nb_streams > 1) {
-        av_log(ctx, AV_LOG_ERROR, "Dynacolor Format only Supports One Stream");
+        av_log(ctx, AV_LOG_ERROR, "Dynacolor Format only Supports One Stream\n");
         return AVERROR_INVALIDDATA;
     }
-    
+
     stream = ctx->streams[0];
 
-    if(!stream) {
-        av_log(ctx, AV_LOG_ERROR, "Stream could not be allocated");
-        ret = AVERROR_STREAM_NOT_FOUND;
-        goto end;
-    }
     if(stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
         header->Basic.StreamType = 0x00;
         header->Basic.Audio = 0x00;
@@ -121,6 +116,7 @@ int ff_dyna_write_pes_header(AVFormatContext *ctx, DynacolorPesHeader *pes,
     DynacolorContext *context = ctx->priv_data;
     int ret = 0;
     char* buffer = av_malloc(sizeof(DynacolorPesHeader));
+    AVStream *stream = ctx->streams[0];
 
     pes->start_code0 = 0x50;
     pes->start_code1 = 0xF1;
@@ -130,7 +126,7 @@ int ff_dyna_write_pes_header(AVFormatContext *ctx, DynacolorPesHeader *pes,
         pes->format_id = DYNACOLOR_AUDIO_FORMAT_PREFIX;
     }
     else {
-        switch (ctx->streams[0]->codecpar->codec_id)
+        switch (stream->codecpar->codec_id)
         {
             case AV_CODEC_ID_JPEG2000:
             case AV_CODEC_ID_JPEGLS:
