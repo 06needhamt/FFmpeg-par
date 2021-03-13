@@ -367,8 +367,11 @@ static int dyna_read_header(AVFormatContext *ctx)
     {
         av_log(ctx, AV_LOG_DEBUG, "Demuxing Audio Stream\n");
 
-        acodec = avcodec_find_decoder(AV_CODEC_ID_PCM_S16LE);
-        astream = avformat_new_stream(ctx, acodec);
+        // NOTE: No codec is specified here since,
+        //       There are no samples of this format
+        //       That contain audio to use as a baseline
+        //       So we just allow any audio codec to be demuxed
+        astream = avformat_new_stream(ctx, NULL);
         acodec_params = astream->codecpar;
 
         if (!astream || !acodec_params)
