@@ -239,6 +239,9 @@ AVOutputFormat ff_dynacolor_muxer = {
     .name           = "dynacolor",
     .long_name      = NULL_IF_CONFIG_SMALL("Dynacolor MVC"),
     .priv_data_size = sizeof(DynacolorContext),
+    .audio_codec       = AV_CODEC_ID_AAC,
+    .video_codec       = CONFIG_LIBX264_ENCODER ?
+                         AV_CODEC_ID_H264 : AV_CODEC_ID_MPEG4,
     .extensions     = "dyna,dyn",
     .init           = dyna_init,
     .write_header   = dyna_write_header,
