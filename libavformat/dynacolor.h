@@ -1,5 +1,5 @@
 /*
- * Dynacolor MVC Demuxer
+ * Dynacolor MVC Common Definitions
  * Copyright (c) 2020-2021 Tom Needham
  *
  * This file is part of FFmpeg.
