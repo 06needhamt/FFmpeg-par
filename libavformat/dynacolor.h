@@ -211,8 +211,8 @@ int ff_dyna_write_file_header(AVFormatContext *ctx, AVIOContext *pb,
                                 
 int ff_dyna_read_pes_header(AVFormatContext *ctx, uint8_t *pes_data);
 
-int ff_dyna_write_pes_header(AVFormatContext *ctx, DynacolorPesHeader *pes,
-                                unsigned int size);
+int ff_dyna_write_pes_header(AVFormatContext *ctx, AVIOContext *pb,
+                                DynacolorPesHeader *pes, unsigned int size);
 
 int ff_dyna_check_pes_packet_header(AVFormatContext *ctx, int format_prefix);
 

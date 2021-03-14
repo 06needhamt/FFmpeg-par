@@ -106,12 +106,14 @@ int ff_dyna_write_file_header(AVFormatContext *ctx, AVIOContext *pb,
 
     context->header = *header;
 
+    avio_write(pb, (unsigned char*)header, sizeof(DynacolorHeader));
+
 end:
     return ret;
 }
 
-int ff_dyna_write_pes_header(AVFormatContext *ctx, DynacolorPesHeader *pes,
-                                unsigned int size) 
+int ff_dyna_write_pes_header(AVFormatContext *ctx, AVIOContext* pb,
+                                DynacolorPesHeader *pes, unsigned int size)
 {    
     DynacolorContext *context = ctx->priv_data;
     int ret = 0;
@@ -167,6 +169,8 @@ int ff_dyna_write_pes_header(AVFormatContext *ctx, DynacolorPesHeader *pes,
     pes->field_id = 0x01;
     pes->unused_5 = 0x00;
 
+    avio_write(pb, (unsigned char*) pes, sizeof(DynacolorPesHeader));
+
 end:
     av_free(buffer);
     return ret;
@@ -199,7 +203,7 @@ static int dyna_write_header(AVFormatContext *ctx)
         goto end;
     }
 
-    ret = ff_dyna_write_pes_header(ctx, &priv->pes_header, size);
+    ret = ff_dyna_write_pes_header(ctx, pb, &priv->pes_header, size);
 
     if(ret != 0){
         av_log(ctx, AV_LOG_ERROR, "Error Writing PES Header\n");
@@ -219,7 +223,7 @@ static int dyna_write_packet(AVFormatContext *ctx, AVPacket *pkt)
 
     avio_write(pb, pkt->data, size);
 
-    ret = ff_dyna_write_pes_header(ctx, &priv->pes_header, size);
+    ret = ff_dyna_write_pes_header(ctx, pb, &priv->pes_header, size);
 
     if(ret != 0){
         av_log(ctx, AV_LOG_ERROR, "Error Writing PES Header\n");
