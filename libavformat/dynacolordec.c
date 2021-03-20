@@ -395,23 +395,19 @@ static int dyna_read_packet(AVFormatContext *ctx, AVPacket *pkt)
     AVIOContext *pb = ctx->pb;
     DynacolorPesHeader *pes;
 
-    time_t time;
     unsigned char *pes_data;
     unsigned char *pkt_data;
     unsigned int size;
 
-    unsigned int basicIdx_H, basicIdx_L;
-
     pes_data = av_malloc_array(DYNACOLOR_PES_HEADER_SIZE, 1);
     pes = av_malloc(sizeof(DynacolorPesHeader));
 
-    ret = ff_dyna_read_file_header(ctx, pb, pes_data, pes, &size, &time,
-                                     &priv->header, &basicIdx_H, &basicIdx_L, 0);
+    size = FFABS(((priv->pes_header.size_bit7to0 & 0xFF) |
+    ((priv->pes_header.size_bit10to8 & 0x04) << 15) |
+    ((priv->pes_header.size_bit14to11 & 0x08) << 11) |
+    ((priv->pes_header.size_bit21to15 & 0x7F) << 8)) - 32);
 
-    size = (priv->pes_header.size_bit7to0 & 0xFF) | 
-    ((priv->pes_header.size_bit10to8 & 0x04) << 15) | 
-    ((priv->pes_header.size_bit14to11 & 0x08) << 11) | 
-    ((priv->pes_header.size_bit21to15 & 0x7F) << 8);
+    av_log(ctx, AV_LOG_DEBUG, "Size: %i\n", size);
 
     pkt_data = av_malloc(size);
     ret = avio_read(pb, pkt_data, size);
@@ -426,6 +422,8 @@ static int dyna_read_packet(AVFormatContext *ctx, AVPacket *pkt)
         av_log(ctx, AV_LOG_ERROR, "Error Building Packet\n");
         goto end;
     }
+
+    ret = ff_dyna_read_pes_header(ctx, pes_data);
 
 end:
     av_free(pes_data);
@@ -444,9 +442,12 @@ static int dyna_read_seek(AVFormatContext *ctx, int stream_index,
 {
     DynacolorContext *priv = ctx->priv_data;
     unsigned int size = 0;
-    int64_t ret = 0L;
+    int ret = 0;
 
-    size = (priv->pes_header.size_bit7to0 & 0xFF) | ((priv->pes_header.size_bit10to8 & 0x04) << 15) | ((priv->pes_header.size_bit14to11 & 0x08) << 11) | ((priv->pes_header.size_bit21to15 & 0x7F) << 8);
+    size = FFABS(((priv->pes_header.size_bit7to0 & 0xFF) |
+    ((priv->pes_header.size_bit10to8 & 0x04) << 15) |
+    ((priv->pes_header.size_bit14to11 & 0x08) << 11) |
+    ((priv->pes_header.size_bit21to15 & 0x7F) << 8)) - 32);
 
     ret = avio_seek(ctx->pb, size, SEEK_SET);
 
