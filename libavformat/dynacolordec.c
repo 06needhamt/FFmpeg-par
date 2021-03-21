@@ -166,15 +166,15 @@ int ff_dyna_get_stream_format(AVFormatContext *ctx, DynacolorHeader *header)
 
     if (!ret)
     {
-        // Format was not H264 or H265 so try And Build Header for MPEG4 Format
+        // Format was not H264 or so try And Build Header for MPEG4 Format
         av_log(ctx, AV_LOG_DEBUG, "Validating MPEG4 PES Header\n");
         ret = ff_dyna_check_pes_packet_header(ctx, DYNACOLOR_MPEG4_FORMAT_PREFIX);
 
         if (!ret)
         {
-            // Format was not H264 or H265 so try And Build Header for MPEG4 Format
-            av_log(ctx, AV_LOG_DEBUG, "Validating MPEG4 PES Header\n");
-            ret = ff_dyna_check_pes_packet_header(ctx, DYNACOLOR_MPEG4_FORMAT_PREFIX);
+            // Format was not H264 or MPEG4 so try And Build Header for H265 Format
+            av_log(ctx, AV_LOG_DEBUG, "Validating H265 PES Header\n");
+            ret = ff_dyna_check_pes_packet_header(ctx, DYNACOLOR_H265_FORMAT_PREFIX);
 
             if (!ret)
             {
@@ -207,14 +207,14 @@ int ff_dyna_get_stream_format(AVFormatContext *ctx, DynacolorHeader *header)
             }
             else
             {
-                av_log(ctx, AV_LOG_DEBUG, "Successfully Validated MPEG4 PES Header\n");
-                return DYNACOLOR_MPEG4_FORMAT_PREFIX;
+                av_log(ctx, AV_LOG_DEBUG, "Successfully Validated H265 PES Header\n");
+                return DYNACOLOR_H265_FORMAT_PREFIX;
             }
         }
         else 
         {
-            av_log(ctx, AV_LOG_DEBUG, "Successfully Validated H265 PES Header\n");
-            return DYNACOLOR_H265_FORMAT_PREFIX;
+            av_log(ctx, AV_LOG_DEBUG, "Successfully Validated MPEG4 PES Header\n");
+            return DYNACOLOR_MPEG4_FORMAT_PREFIX;
         }
     }
     else
