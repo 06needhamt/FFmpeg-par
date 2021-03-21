@@ -397,7 +397,7 @@ static int dyna_read_packet(AVFormatContext *ctx, AVPacket *pkt)
 
     unsigned char *pes_data;
     unsigned char *pkt_data;
-    unsigned int size;
+    int size;
 
     pes_data = av_malloc_array(DYNACOLOR_PES_HEADER_SIZE, 1);
     pes = av_malloc(sizeof(DynacolorPesHeader));
@@ -408,6 +408,11 @@ static int dyna_read_packet(AVFormatContext *ctx, AVPacket *pkt)
     ((priv->pes_header.size_bit21to15 & 0x7F) << 8)) - 32);
 
     av_log(ctx, AV_LOG_DEBUG, "Size: %i\n", size);
+
+    if(size <= 0){
+        av_log(ctx, AV_LOG_DEBUG, "Skipping Empty Packet\n");
+        goto end;
+    }
 
     pkt_data = av_malloc(size);
     ret = avio_read(pb, pkt_data, size);
@@ -422,10 +427,9 @@ static int dyna_read_packet(AVFormatContext *ctx, AVPacket *pkt)
         av_log(ctx, AV_LOG_ERROR, "Error Building Packet\n");
         goto end;
     }
-
+end:
     ret = ff_dyna_read_pes_header(ctx, pes_data);
 
-end:
     av_free(pes_data);
     av_free(pes);
 

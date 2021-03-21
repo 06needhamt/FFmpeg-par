@@ -56,7 +56,7 @@ int ff_dyna_write_file_header(AVFormatContext *ctx, AVIOContext *pb,
         header->Basic.Audio = 0x00;
     }
     else if(stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-        header->Basic.StreamType = 0x01;
+        header->Basic.StreamType = 0x00;
         header->Basic.Audio = 0x01;
     }
     else {
@@ -159,9 +159,9 @@ int ff_dyna_write_pes_header(AVFormatContext *ctx, AVIOContext* pb,
     pes->unused_3 = MKTAG(0x00, 0x00, 0x00, 0x00);
     pes->unused_4 = MKTAG(0x00, 0x00, 0x00, 0x00);
     pes->size_bit7to0 = size & 0xFF;
-    pes->size_bit10to8 = (size >> 8) & 0x08;
-    pes->size_bit14to11 = (size >> 11) & 0x0F;
-    pes->size_bit21to15 = (size >> 15) & 0x7F;
+    pes->size_bit10to8 = (size >> 15) & 0x04;
+    pes->size_bit14to11 = (size >> 11) & 0x08;
+    pes->size_bit21to15 = (size >> 8) & 0x7F;
     pes->size_marker0 = 0x00;
     pes->size_marker1 = 0x01;
     pes->picture_type = 0x48; // TODO: Work out if this changes with frame type
@@ -219,7 +219,10 @@ static int dyna_write_packet(AVFormatContext *ctx, AVPacket *pkt)
     int ret = 0;
     DynacolorContext *priv = ctx->priv_data;
     AVIOContext *pb = ctx->pb;
-    unsigned int size = pkt->size;
+    int size = FFABS(((priv->pes_header.size_bit7to0 & 0xFF) |
+        ((priv->pes_header.size_bit10to8 & 0x04) << 15) |
+        ((priv->pes_header.size_bit14to11 & 0x08) << 11) |
+        ((priv->pes_header.size_bit21to15 & 0x7F) << 8)) - 32);
 
     avio_write(pb, pkt->data, size);
 
