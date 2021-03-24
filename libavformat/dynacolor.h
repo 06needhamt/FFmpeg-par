@@ -22,6 +22,10 @@
 #ifndef AVFORMAT_DYNACOLOR_H
 #define AVFORMAT_DYNACOLOR_H
 
+#include <sys/types.h>
+#include <signal.h>
+#include <unistd.h>
+
 #include "avformat.h"
 
 // The data structure of the streaming video:
@@ -163,6 +167,15 @@ typedef struct
     DynacolorSuperExtraIdx SuperExtra;
 } DynacolorHeader;
 
+typedef union {
+    // size of the video body and this PES header (total 3 bytes including the markers)
+    unsigned int size_bit7to0 : 8;   // from bit7 to bit0
+    unsigned int size_bit10to8 : 3;  // from bit10 to bit8
+    unsigned int size_bit14to11 : 4; // from bit14 to bit11
+    unsigned int size_bit21to15 : 7; // from bit21 to bit15
+
+    unsigned int full_size : 22;
+} Size;
 typedef struct
 {
     // 4 bytes
@@ -172,19 +185,16 @@ typedef struct
     unsigned int format_id : 4;   // JPEG:0xd, MPEG4:0xe, H.264:0xf, Audio:0xc
     unsigned int channel_id : 4;  // channel id from 0 to 15 for CH1 to CH16
 
+    Size size;
+
+    unsigned int size_marker0 : 1;   // must be 0x1
+    unsigned int size_marker1 : 1;   // must be 0x1
+
     unsigned int unused_0;
     unsigned int unused_1;
     unsigned int unused_2;
     unsigned int unused_3;
     unsigned int unused_4;
-
-    // size of the video body and this PES header (total 3 bytes including the markers)
-    unsigned int size_bit7to0 : 8;   // from bit7 to bit0
-    unsigned int size_bit10to8 : 3;  // from bit10 to bit8
-    unsigned int size_bit14to11 : 4; // from bit14 to bit11
-    unsigned int size_bit21to15 : 7; // from bit21 to bit15
-    unsigned int size_marker0 : 1;   // must be 0x1
-    unsigned int size_marker1 : 1;   // must be 0x1
 
     // 1 byte for the picture type
     unsigned int picture_type : 8;   // 1: I-slice, 2: P-slice, 3: B-slice

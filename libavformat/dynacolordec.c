@@ -234,23 +234,24 @@ int ff_dyna_read_pes_header(AVFormatContext *ctx, uint8_t *pes_data)
     priv->pes_header.start_code1 = pes_data[1];
     priv->pes_header.start_code2 = pes_data[2];
     priv->pes_header.format_id = pes_data[3] & 0x0F;
-    priv->pes_header.channel_id = pes_data[3] >> 8 & 0x0F;
+    priv->pes_header.channel_id = pes_data[3] >> 4 & 0x0F;
 
-    priv->pes_header.unused_0 = MKTAG(pes_data[4], pes_data[5], pes_data[6], pes_data[7]);
-    priv->pes_header.unused_1 = MKTAG(pes_data[8], pes_data[9], pes_data[10], pes_data[11]);
-    priv->pes_header.unused_2 = MKTAG(pes_data[12], pes_data[13], pes_data[14], pes_data[15]);
-    priv->pes_header.unused_3 = MKTAG(pes_data[16], pes_data[17], pes_data[18], pes_data[19]);
-    priv->pes_header.unused_4 = MKTAG(pes_data[20], pes_data[21], pes_data[22], pes_data[23]);
-
-    priv->pes_header.size_bit7to0 = pes_data[24];
-    priv->pes_header.size_bit10to8 = pes_data[25] & 0x08;
-    priv->pes_header.size_bit14to11 = pes_data[26] & 0xF;
-    priv->pes_header.size_bit21to15 = pes_data[27];
-    priv->pes_header.size_marker0 = pes_data[28] & 0x01;
-    priv->pes_header.size_marker1 = pes_data[29] & 0x01;
-    priv->pes_header.picture_type = pes_data[30];
-    priv->pes_header.is_interleaved = pes_data[31] & 0x01;
-    priv->pes_header.field_id = pes_data[31] >> 1 & 0x03;
+    // priv->pes_header.size.size_bit7to0 = pes_data[4];
+    // priv->pes_header.size.size_bit10to8 = pes_data[5] & 0x04;
+    // priv->pes_header.size.size_bit14to11 = pes_data[5] >> 3 & 0x08;
+    // priv->pes_header.size.size_bit21to15 = pes_data[5] >> 7 & 0x01 | pes_data[6] & 0x3F;
+    priv->pes_header.size.full_size = MKTAG(pes_data[4], pes_data[5], pes_data[6] & 0x3F, 0x00);
+    priv->pes_header.size_marker0 = pes_data[6] >> 6 & 0x01;
+    priv->pes_header.size_marker1 = pes_data[6] >> 7 & 0x01;
+    priv->pes_header.picture_type = pes_data[7];
+    priv->pes_header.is_interleaved = pes_data[8] & 0x01;
+    priv->pes_header.field_id = pes_data[8] >> 1 & 0x03;
+    
+    priv->pes_header.unused_0 = 0x00;
+    priv->pes_header.unused_1 = 0x00;
+    priv->pes_header.unused_2 = 0x00;
+    priv->pes_header.unused_3 = 0x00;
+    priv->pes_header.unused_4 = 0x00;
     priv->pes_header.unused_5 = 0x00;
 
     return 0;
@@ -402,17 +403,18 @@ static int dyna_read_packet(AVFormatContext *ctx, AVPacket *pkt)
     pes_data = av_malloc_array(DYNACOLOR_PES_HEADER_SIZE, 1);
     pes = av_malloc(sizeof(DynacolorPesHeader));
 
-    size = FFABS(((priv->pes_header.size_bit7to0 & 0xFF) |
-    ((priv->pes_header.size_bit10to8 & 0x04) << 15) |
-    ((priv->pes_header.size_bit14to11 & 0x08) << 11) |
-    ((priv->pes_header.size_bit21to15 & 0x7F) << 8)) - 32);
+    size = pkt->size;
+
+    if(size == 0) {
+        av_log(ctx, AV_LOG_DEBUG, "Packet Size was 0 \n");
+
+        if(FFABS(priv->pes_header.size.full_size) == 0)
+            kill(getpid(), 11);
+
+        size = FFABS(priv->pes_header.size.full_size - DYNACOLOR_PES_HEADER_SIZE);
+    }
 
     av_log(ctx, AV_LOG_DEBUG, "Size: %i\n", size);
-
-    if(size <= 0){
-        av_log(ctx, AV_LOG_DEBUG, "Skipping Empty Packet\n");
-        goto end;
-    }
 
     pkt_data = av_malloc(size);
     ret = avio_read(pb, pkt_data, size);
@@ -448,10 +450,7 @@ static int dyna_read_seek(AVFormatContext *ctx, int stream_index,
     unsigned int size = 0;
     int ret = 0;
 
-    size = FFABS(((priv->pes_header.size_bit7to0 & 0xFF) |
-    ((priv->pes_header.size_bit10to8 & 0x04) << 15) |
-    ((priv->pes_header.size_bit14to11 & 0x08) << 11) |
-    ((priv->pes_header.size_bit21to15 & 0x7F) << 8)) - 32);
+    size = FFABS(priv->pes_header.size.full_size - DYNACOLOR_PES_HEADER_SIZE);
 
     ret = avio_seek(ctx->pb, size, SEEK_SET);
 
